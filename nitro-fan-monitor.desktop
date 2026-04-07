@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Nitro Fan Monitor
+Comment=Real-time CPU/GPU temperature and fan speed monitor
+Exec=python3 /usr/local/bin/nitro-fan-monitor.py
+Icon=sensors-temperature-symbolic
+Terminal=false
+Type=Application
+Categories=System;Monitor;
+Keywords=fan;temperature;cpu;gpu;nitro;
