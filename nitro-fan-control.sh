@@ -1,7 +1,8 @@
 #!/bin/bash
 # =============================================================================
-# Acer Nitro AN515-55 Fan Control
+# Acer Nitro AN515-55 Fan Control — V2
 # Custom dual-fan controller — CPU and GPU monitored independently
+# V2: smooth ramping, linear interpolation, higher baseline
 #
 # EC Registers (confirmed working on AN515-55):
 #   0x22 (34)  — CPU fan control mode (4=auto, 12=manual)
@@ -18,25 +19,30 @@ set -euo pipefail
 
 # --- Configuration -----------------------------------------------------------
 
-# Poll interval in seconds (how often to check temps and adjust fans)
-POLL_INTERVAL=3
+# Poll interval in seconds
+POLL_INTERVAL=2
 
-# Hysteresis: fans won't drop speed unless temp falls this many degrees below
-# the threshold that raised them. Prevents rapid fan speed oscillation.
+# Hysteresis: prevent fan speed drops unless temp falls this far below threshold
 HYSTERESIS=3
 
-# Fan curve: TEMP_THRESHOLDS and FAN_SPEEDS are parallel arrays.
-# At or above TEMP_THRESHOLDS[i], fan runs at FAN_SPEEDS[i] percent.
-# Below the lowest threshold, fan is at 0%.
-TEMP_THRESHOLDS=(50 55 60 65 70 75 80 85 90)
-FAN_SPEEDS=(     20 25 30 40 50 60 75 90 100)
+# Fan curve: parallel arrays for linear interpolation between points.
+# Between points, fan speed is interpolated linearly.
+# Below first point → first speed. Above last point → last speed.
+CURVE_TEMPS=(  50  55  60  65  70  75  80  85  90)
+CURVE_SPEEDS=( 25  28  32  38  45  55  70  85 100)
 
-# Minimum fan speed when fans are on (some fans stall below a certain %).
-# Set to 0 to allow fans to stop completely. Adjust if your fans click/stall.
-MIN_FAN_SPEED=0
+# Minimum fan speed — always run at least this fast
+MIN_FAN_SPEED=25
+
+# Smooth ramping: max % change per poll cycle
+RAMP_UP_MAX=3    # faster ramp up for safety
+RAMP_DOWN_MAX=2  # slower ramp down for smooth wind-down
 
 # Safety: if temp reading fails, force fans to this speed
 FAILSAFE_SPEED=80
+
+# Logging: true = log every reading, false = log every 30 seconds
+VERBOSE=true
 
 # Log file
 LOG_FILE="/var/log/nitro-fan-control.log"
@@ -44,7 +50,7 @@ LOG_FILE="/var/log/nitro-fan-control.log"
 # --- EC Probe Paths ----------------------------------------------------------
 
 EC_PROBE=""
-for candidate in /opt/nbfc/bin/ec_probe /usr/bin/ec_probe /usr/local/bin/ec_probe; do
+for candidate in /usr/bin/ec_probe /usr/local/bin/ec_probe /opt/nbfc/bin/ec_probe; do
     if [[ -x "$candidate" ]]; then
         EC_PROBE="$candidate"
         break
@@ -75,6 +81,7 @@ CURRENT_CPU_SPEED=-1
 CURRENT_GPU_SPEED=-1
 PREV_CPU_TEMP=0
 PREV_GPU_TEMP=0
+LAST_LOG_TIME=0
 
 # --- Functions ----------------------------------------------------------------
 
@@ -85,7 +92,6 @@ log_msg() {
 read_cpu_temp() {
     local raw
     raw=$("$EC_PROBE" read "$REG_CPU_TEMP" 2>&1) || return 1
-    # ec_probe returns "53 (0x35)" — extract just the leading digits
     grep -oP '^\d+' <<< "$raw"
 }
 
@@ -105,7 +111,7 @@ set_fan_auto_mode() {
     "$EC_PROBE" write "$REG_GPU_FAN_MODE" "$GPU_MODE_AUTO" >/dev/null 2>&1
 }
 
-set_cpu_fan_speed() {
+write_cpu_fan_speed() {
     local speed=$1
     if (( speed != CURRENT_CPU_SPEED )); then
         "$EC_PROBE" write "$REG_CPU_FAN_SPEED" "$speed" >/dev/null 2>&1
@@ -113,7 +119,7 @@ set_cpu_fan_speed() {
     fi
 }
 
-set_gpu_fan_speed() {
+write_gpu_fan_speed() {
     local speed=$1
     if (( speed != CURRENT_GPU_SPEED )); then
         "$EC_PROBE" write "$REG_GPU_FAN_SPEED" "$speed" >/dev/null 2>&1
@@ -121,50 +127,108 @@ set_gpu_fan_speed() {
     fi
 }
 
-# Calculate target fan speed for a given temperature, applying hysteresis
-# against the previous temperature to avoid oscillation.
-calculate_fan_speed() {
+# Linear interpolation fan curve.
+# Returns the interpolated fan speed for a given temperature.
+interpolate_curve() {
     local temp=$1
-    local prev_temp=$2
-    local target_speed=0
-    local i
+    local n=${#CURVE_TEMPS[@]}
 
-    # Walk the curve to find the target speed for current temp
-    for i in "${!TEMP_THRESHOLDS[@]}"; do
-        if (( temp >= TEMP_THRESHOLDS[i] )); then
-            target_speed=${FAN_SPEEDS[i]}
+    # Below lowest point
+    if (( temp <= CURVE_TEMPS[0] )); then
+        echo "${CURVE_SPEEDS[0]}"
+        return
+    fi
+
+    # Above highest point
+    if (( temp >= CURVE_TEMPS[n-1] )); then
+        echo "${CURVE_SPEEDS[n-1]}"
+        return
+    fi
+
+    # Find the two surrounding points and interpolate
+    local i
+    for (( i = 0; i < n - 1; i++ )); do
+        if (( temp >= CURVE_TEMPS[i] && temp < CURVE_TEMPS[i+1] )); then
+            local t0=${CURVE_TEMPS[i]}
+            local t1=${CURVE_TEMPS[i+1]}
+            local s0=${CURVE_SPEEDS[i]}
+            local s1=${CURVE_SPEEDS[i+1]}
+            # Integer linear interpolation: s0 + (temp - t0) * (s1 - s0) / (t1 - t0)
+            local result=$(( s0 + (temp - t0) * (s1 - s0) / (t1 - t0) ))
+            echo "$result"
+            return
         fi
     done
 
-    # Apply hysteresis: if temp is dropping, only reduce fan speed if we've
-    # fallen HYSTERESIS degrees below the threshold that set the current speed.
+    # Fallback (shouldn't reach here)
+    echo "${CURVE_SPEEDS[n-1]}"
+}
+
+# Calculate target fan speed with hysteresis.
+# Uses the interpolated curve, but when temp is dropping, keeps the higher
+# speed until temp drops HYSTERESIS degrees below where it was.
+calculate_target() {
+    local temp=$1
+    local prev_temp=$2
+    local current_actual=$3
+
+    local curve_speed
+    curve_speed=$(interpolate_curve "$temp")
+
+    # Apply hysteresis on temperature drops
     if (( temp < prev_temp )); then
-        local prev_speed=0
-        for i in "${!TEMP_THRESHOLDS[@]}"; do
-            if (( prev_temp >= TEMP_THRESHOLDS[i] )); then
-                prev_speed=${FAN_SPEEDS[i]}
-            fi
-        done
-        # If previous speed was higher, check hysteresis
-        if (( prev_speed > target_speed )); then
-            local hyst_speed=0
-            for i in "${!TEMP_THRESHOLDS[@]}"; do
-                if (( temp >= (TEMP_THRESHOLDS[i] - HYSTERESIS) )); then
-                    hyst_speed=${FAN_SPEEDS[i]}
-                fi
-            done
-            if (( hyst_speed > target_speed )); then
-                target_speed=$hyst_speed
+        local hyst_speed
+        hyst_speed=$(interpolate_curve "$((temp + HYSTERESIS))")
+        if (( hyst_speed > curve_speed )); then
+            # Only use hysteresis speed if it doesn't exceed what we're already at
+            if (( current_actual >= 0 && hyst_speed <= current_actual )); then
+                curve_speed=$hyst_speed
+            elif (( current_actual >= 0 && curve_speed < current_actual )); then
+                # We want to come down, but not as fast — use hysteresis
+                curve_speed=$hyst_speed
             fi
         fi
     fi
 
-    # Enforce minimum speed (if fans are supposed to be on)
-    if (( target_speed > 0 && target_speed < MIN_FAN_SPEED )); then
-        target_speed=$MIN_FAN_SPEED
+    # Enforce minimum
+    if (( curve_speed < MIN_FAN_SPEED )); then
+        curve_speed=$MIN_FAN_SPEED
     fi
 
-    echo "$target_speed"
+    echo "$curve_speed"
+}
+
+# Smooth ramping: move current speed toward target by at most RAMP_UP_MAX/RAMP_DOWN_MAX per cycle
+ramp_speed() {
+    local current=$1
+    local target=$2
+
+    # First cycle — jump to target (no previous speed to ramp from)
+    if (( current < 0 )); then
+        echo "$target"
+        return
+    fi
+
+    local diff=$(( target - current ))
+
+    if (( diff > 0 )); then
+        # Ramping up
+        if (( diff > RAMP_UP_MAX )); then
+            echo $(( current + RAMP_UP_MAX ))
+        else
+            echo "$target"
+        fi
+    elif (( diff < 0 )); then
+        # Ramping down
+        local abs_diff=$(( -diff ))
+        if (( abs_diff > RAMP_DOWN_MAX )); then
+            echo $(( current - RAMP_DOWN_MAX ))
+        else
+            echo "$target"
+        fi
+    else
+        echo "$current"
+    fi
 }
 
 cleanup() {
@@ -177,10 +241,12 @@ cleanup() {
 
 trap cleanup SIGTERM SIGINT SIGHUP EXIT
 
-echo "Acer Nitro AN515-55 Fan Control starting..."
-log_msg "=== Fan control started ==="
-log_msg "Curve: thresholds=${TEMP_THRESHOLDS[*]} speeds=${FAN_SPEEDS[*]}"
-log_msg "Hysteresis: ${HYSTERESIS}°C | Poll: ${POLL_INTERVAL}s | Failsafe: ${FAILSAFE_SPEED}%"
+echo "Acer Nitro AN515-55 Fan Control v2 starting..."
+log_msg "=== Fan control v2 started ==="
+log_msg "Curve: temps=${CURVE_TEMPS[*]} speeds=${CURVE_SPEEDS[*]}"
+log_msg "Hysteresis: ${HYSTERESIS}°C | Poll: ${POLL_INTERVAL}s | Min: ${MIN_FAN_SPEED}%"
+log_msg "Ramp: up=${RAMP_UP_MAX}%/cycle down=${RAMP_DOWN_MAX}%/cycle | Failsafe: ${FAILSAFE_SPEED}%"
+log_msg "Verbose: ${VERBOSE}"
 
 # Switch to manual mode
 set_fan_manual_mode
@@ -191,30 +257,39 @@ while true; do
     cpu_temp=$(read_cpu_temp) || cpu_temp=""
     gpu_temp=$(read_gpu_temp) || gpu_temp=""
 
-    # Handle failed readings with failsafe
+    # --- CPU fan ---
     if [[ -z "$cpu_temp" ]]; then
         log_msg "WARNING: Failed to read CPU temp — applying failsafe ${FAILSAFE_SPEED}%"
-        set_cpu_fan_speed "$FAILSAFE_SPEED"
+        write_cpu_fan_speed "$FAILSAFE_SPEED"
         cpu_temp=$PREV_CPU_TEMP
+        cpu_target="fail"
+        cpu_actual=$FAILSAFE_SPEED
     else
-        cpu_fan=$(calculate_fan_speed "$cpu_temp" "$PREV_CPU_TEMP")
-        set_cpu_fan_speed "$cpu_fan"
+        cpu_target=$(calculate_target "$cpu_temp" "$PREV_CPU_TEMP" "$CURRENT_CPU_SPEED")
+        cpu_actual=$(ramp_speed "$CURRENT_CPU_SPEED" "$cpu_target")
+        write_cpu_fan_speed "$cpu_actual"
         PREV_CPU_TEMP=$cpu_temp
     fi
 
+    # --- GPU fan ---
     if [[ -z "$gpu_temp" ]]; then
         log_msg "WARNING: Failed to read GPU temp — applying failsafe ${FAILSAFE_SPEED}%"
-        set_gpu_fan_speed "$FAILSAFE_SPEED"
+        write_gpu_fan_speed "$FAILSAFE_SPEED"
         gpu_temp=$PREV_GPU_TEMP
+        gpu_target="fail"
+        gpu_actual=$FAILSAFE_SPEED
     else
-        gpu_fan=$(calculate_fan_speed "$gpu_temp" "$PREV_GPU_TEMP")
-        set_gpu_fan_speed "$gpu_fan"
+        gpu_target=$(calculate_target "$gpu_temp" "$PREV_GPU_TEMP" "$CURRENT_GPU_SPEED")
+        gpu_actual=$(ramp_speed "$CURRENT_GPU_SPEED" "$gpu_target")
+        write_gpu_fan_speed "$gpu_actual"
         PREV_GPU_TEMP=$gpu_temp
     fi
 
-    # Log periodically (every ~30 seconds to avoid log spam)
-    if (( SECONDS % 30 < POLL_INTERVAL )); then
-        log_msg "CPU: ${cpu_temp}°C → ${CURRENT_CPU_SPEED}% | GPU: ${gpu_temp}°C → ${CURRENT_GPU_SPEED}%"
+    # --- Logging ---
+    now=$SECONDS
+    if [[ "$VERBOSE" == "true" ]] || (( now - LAST_LOG_TIME >= 30 )); then
+        log_msg "CPU: ${cpu_temp}°C target=${cpu_target}% actual=${cpu_actual}% | GPU: ${gpu_temp}°C target=${gpu_target}% actual=${gpu_actual}%"
+        LAST_LOG_TIME=$now
     fi
 
     sleep "$POLL_INTERVAL"

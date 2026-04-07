@@ -1,0 +1,8 @@
+/var/log/nitro-fan-control.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
