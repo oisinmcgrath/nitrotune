@@ -1,0 +1,20 @@
+[Unit]
+Description=Acer Nitro AN515-55 Custom Fan Control
+After=multi-user.target
+Wants=nvidia-persistenced.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nitro-fan-control.sh
+ExecStopPost=/bin/bash -c '/usr/bin/ec_probe write 34 4; /usr/bin/ec_probe write 33 16'
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/log
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
