@@ -1,0 +1,19 @@
+[Unit]
+Description=Acer Nitro Thermal Profile — set balanced on boot
+Documentation=https://github.com/your-repo/nitro-fan-control
+# Run after acer_wmi is up and platform_profile sysfs is ready
+After=systemd-modules-load.service multi-user.target
+# Do not start if nitro-fan-control is already managing fans manually
+# (though ideally only one should be active at a time)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/acer-profile set balanced
+ExecStartPost=/bin/chmod o+w /sys/firmware/acpi/platform_profile
+# On shutdown, leave profile as-is (BIOS retains it across power cycles anyway)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
