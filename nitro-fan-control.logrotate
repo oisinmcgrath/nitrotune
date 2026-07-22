@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 /var/log/nitro-fan-control.log {
     weekly
     rotate 4

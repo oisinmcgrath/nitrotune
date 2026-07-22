@@ -1,6 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
 [Unit]
 Description=Acer Nitro Thermal Profile — set balanced on boot
-Documentation=https://github.com/your-repo/nitro-fan-control
 # Run after acer_wmi is up and platform_profile sysfs is ready
 After=systemd-modules-load.service multi-user.target
 # Do not start if nitro-fan-control is already managing fans manually
