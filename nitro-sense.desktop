@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nitro Sense
+Comment=Acer Nitro AN515-55 sensor monitor
+Exec=/usr/local/bin/nitro-sense
+Icon=cpu
+Categories=System;Monitor;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

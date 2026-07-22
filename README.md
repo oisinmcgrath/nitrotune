@@ -1,11 +1,11 @@
 # Nitro Fan Control
 
-Custom fan and thermal-profile control for the **Acer Nitro AN515-55** on
-Linux — a native replacement for the fan-control side of Windows-only
-NitroSense/DAMX. Pairs with `nitro-sense`, a separate read-only sensor
-display; this repo is the part that actually changes fan behaviour.
+Fan/thermal-profile control **and** a read-only sensor monitor for the
+**Acer Nitro AN515-55** on Linux — a native replacement for Windows-only
+NitroSense/DAMX.
 
-There are two independent ways to control fans here — pick one:
+There are two independent ways to control fans here — pick one — plus an
+optional GUI that only displays sensors and changes nothing:
 
 ## Option A — WMI thermal profiles (`acer-profile`)
 
@@ -33,7 +33,7 @@ linearly-interpolated fan curve with ramp limiting (no jarring jumps on
 Turbo Boost temperature spikes) and independent CPU/GPU control.
 
 ```bash
-sudo bash install.sh
+sudo bash install-fan-control.sh
 sudo systemctl start nitro-fan-control
 tail -f /var/log/nitro-fan-control.log   # watch it for a few minutes first
 sudo systemctl enable nitro-fan-control  # once you're happy
@@ -47,6 +47,20 @@ that tails the fan-control log — no root required.
 
 **Don't run both at once** — `install-thermal-profile.sh` stops
 `nitro-fan-control` automatically when you switch to Option A.
+
+## Nitro Sense (read-only monitor)
+
+`nitro-sense.py` is a separate, always-safe GTK system-tray GUI: live
+CPU/GPU temperature, fan RPM, RAM, battery, and the active thermal profile.
+It never writes anything — no buttons, no settings, just a readout. Useful
+regardless of which control option above you use, or neither.
+
+```bash
+sudo bash install-nitro-sense.sh
+```
+
+Installs to `/usr/local/bin/nitro-sense`, adds an application-menu entry,
+and autostarts on login.
 
 ## EC registers (confirmed on AN515-55)
 
@@ -68,6 +82,7 @@ the v1→v2 history.
 - [nbfc-linux](https://github.com/nbfc-linux/nbfc-linux) installed, for `ec_probe` (Option B, and EC diagnostics in `acer-profile status`)
 - `nvidia-smi`, for GPU temperature on NVIDIA hardware
 - `acer_wmi` loaded with `predator_v4=1` (Option A only)
+- `python3-gi`, `gir1.2-gtk-3.0` (for `nitro-sense.py` only)
 
 ## Other hardware
 
