@@ -12,10 +12,10 @@ Three independent components for the Acer Nitro AN515-55:
 - `acer-profile.py` + `acer-profile.service` + `install-thermal-profile.sh` +
   `try-predator-v4.sh` — WMI `platform_profile` thermal-profile switcher
   (Option A). The BIOS manages the fan curve; this just picks the profile.
-- `nitro-sense.py` + `nitro-sense.desktop` + `install-nitro-sense.sh` —
-  read-only GTK sensor monitor. Never writes anything; single file, no
-  package. Pure display, safe to run alongside either option above or
-  neither.
+- `nitrotune.py` + `nitrotune.desktop` + `install-nitrotune.sh` —
+  read-only GTK sensor monitor (project namesake, NitroTune). Never
+  writes anything; single file, no package. Pure display, safe to run
+  alongside either option above or neither.
 - `nitro-fan-monitor.py` + `nitro-fan-monitor.desktop` — optional Tk GUI
   that tails `nitro-fan-control`'s log for live gauges/graphs.
 
@@ -30,11 +30,11 @@ Three independent components for the Acer Nitro AN515-55:
   On some BIOS versions (confirmed V2.06 08/19/2021) only `balanced` sticks
   — others silently revert.
 - GPU temp everywhere is `nvidia-smi --query-gpu=temperature.gpu`.
-- `nitro-sense.py` reads `platform_profile` for display only — no write path.
+- `nitrotune.py` reads `platform_profile` for display only — no write path.
 
 ## Conventions
 
-- Stdlib + PyGObject (nitro-sense) / stdlib + tkinter (fan monitor) only;
+- Stdlib + PyGObject (nitrotune) / stdlib + tkinter (fan monitor) only;
   no third-party Python deps. Shell scripts: `set -euo pipefail`.
 - GPL-2.0-only. Keep the SPDX header + license notice at the top of every
   source file (scripts, unit files, `.desktop`, logrotate config).

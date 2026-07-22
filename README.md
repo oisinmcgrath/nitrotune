@@ -1,4 +1,4 @@
-# Nitro Fan Control
+# NitroTune
 
 Fan/thermal-profile control **and** a read-only sensor monitor for the
 **Acer Nitro AN515-55** on Linux — a native replacement for Windows-only
@@ -48,18 +48,18 @@ that tails the fan-control log — no root required.
 **Don't run both at once** — `install-thermal-profile.sh` stops
 `nitro-fan-control` automatically when you switch to Option A.
 
-## Nitro Sense (read-only monitor)
+## NitroTune (read-only monitor)
 
-`nitro-sense.py` is a separate, always-safe GTK system-tray GUI: live
+`nitrotune.py` is a separate, always-safe GTK system-tray GUI: live
 CPU/GPU temperature, fan RPM, RAM, battery, and the active thermal profile.
 It never writes anything — no buttons, no settings, just a readout. Useful
 regardless of which control option above you use, or neither.
 
 ```bash
-sudo bash install-nitro-sense.sh
+sudo bash install-nitrotune.sh
 ```
 
-Installs to `/usr/local/bin/nitro-sense`, adds an application-menu entry,
+Installs to `/usr/local/bin/nitrotune`, adds an application-menu entry,
 and autostarts on login.
 
 ## EC registers (confirmed on AN515-55)
@@ -82,7 +82,7 @@ the v1→v2 history.
 - [nbfc-linux](https://github.com/nbfc-linux/nbfc-linux) installed, for `ec_probe` (Option B, and EC diagnostics in `acer-profile status`)
 - `nvidia-smi`, for GPU temperature on NVIDIA hardware
 - `acer_wmi` loaded with `predator_v4=1` (Option A only)
-- `python3-gi`, `gir1.2-gtk-3.0` (for `nitro-sense.py` only)
+- `python3-gi`, `gir1.2-gtk-3.0` (for `nitrotune.py` only)
 
 ## Other hardware
 

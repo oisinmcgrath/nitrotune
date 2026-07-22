@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# install-nitro-sense.sh — Nitro Sense installer
+# install-nitrotune.sh — NitroTune installer
 # Copyright (C) 2026 Oisin McGrath
 #
 # This program is free software; you can redistribute it and/or modify
@@ -22,7 +22,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_NAME="${SUDO_USER:-$USER}"
 
-echo "=== Nitro Sense Installer ==="
+echo "=== NitroTune Installer ==="
 echo ""
 
 if [[ ! -f /sys/firmware/acpi/platform_profile ]]; then
@@ -32,25 +32,25 @@ if [[ ! -f /sys/firmware/acpi/platform_profile ]]; then
 fi
 
 # ── 1. Install the script ─────────────────────────────────────────────────────
-echo "Installing /usr/local/bin/nitro-sense..."
-install -m 755 "$SCRIPT_DIR/nitro-sense.py" /usr/local/bin/nitro-sense
+echo "Installing /usr/local/bin/nitrotune..."
+install -m 755 "$SCRIPT_DIR/nitrotune.py" /usr/local/bin/nitrotune
 echo "  Done."
 
 # ── 2. Install .desktop for application menu ──────────────────────────────────
 echo "Installing application menu entry..."
-install -m 644 "$SCRIPT_DIR/nitro-sense.desktop" /usr/share/applications/
+install -m 644 "$SCRIPT_DIR/nitrotune.desktop" /usr/share/applications/
 echo "  Done."
 
 # ── 3. Autostart for the current user ────────────────────────────────────────
 AUTOSTART_DIR="$(getent passwd "$USER_NAME" | cut -d: -f6)/.config/autostart"
 mkdir -p "$AUTOSTART_DIR"
-install -m 644 "$SCRIPT_DIR/nitro-sense.desktop" "$AUTOSTART_DIR/"
-chown "${USER_NAME}:" "$AUTOSTART_DIR/nitro-sense.desktop"
+install -m 644 "$SCRIPT_DIR/nitrotune.desktop" "$AUTOSTART_DIR/"
+chown "${USER_NAME}:" "$AUTOSTART_DIR/nitrotune.desktop"
 echo "  Autostart installed for user '${USER_NAME}'."
 
 echo ""
 echo "=== Done ==="
 echo ""
-echo "Launch now:  nitro-sense &"
-echo "Or find it in your application menu as 'Nitro Sense'."
+echo "Launch now:  nitrotune &"
+echo "Or find it in your application menu as 'NitroTune'."
 echo "It will autostart on next login."

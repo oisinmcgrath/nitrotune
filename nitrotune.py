@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# nitro-sense — read-only sensor monitor for the Acer Nitro AN515-55
+# nitrotune — read-only sensor monitor for the Acer Nitro AN515-55
 # Copyright (C) 2026 Oisin McGrath
 #
 # This program is free software; you can redistribute it and/or modify
@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
-nitro-sense — Acer Nitro AN515-55 sensor monitor
+nitrotune — Acer Nitro AN515-55 sensor monitor
 Read-only replacement for the sensor page of NitroSense / DAMX on Linux.
 
 Reads CPU/GPU temperature, fan RPM, RAM, battery, and the active WMI
@@ -175,10 +175,10 @@ progressbar.bat-low progress { background: #ff4757; }
 
 # ── Main window ───────────────────────────────────────────────────────────────
 
-class NitroSenseWindow(Gtk.Window):
+class NitroTuneWindow(Gtk.Window):
 
     def __init__(self):
-        super().__init__(title="Nitro Sense")
+        super().__init__(title="NitroTune")
         self.set_resizable(True)
         self.set_keep_above(False)
         self.set_default_size(420, 300)
@@ -214,7 +214,7 @@ class NitroSenseWindow(Gtk.Window):
         title.set_xalign(0)
         title.get_style_context().add_class("ns-title")
 
-        sub = Gtk.Label(label="Nitro Sense  ·  read-only sensor monitor")
+        sub = Gtk.Label(label="NitroTune  ·  read-only sensor monitor")
         sub.set_xalign(0)
         sub.get_style_context().add_class("ns-sub")
 
@@ -370,7 +370,7 @@ class NitroSenseWindow(Gtk.Window):
 # AppIndicator3 is X11-only and requires extra applets on Cinnamon, so we
 # avoid it for portability.
 
-def build_tray(window: "NitroSenseWindow"):
+def build_tray(window: "NitroTuneWindow"):
     try:
         icon = Gtk.StatusIcon()
     except Exception:
@@ -383,7 +383,7 @@ def build_tray(window: "NitroSenseWindow"):
         if icon.get_pixbuf() or icon.get_gicon():
             break
 
-    icon.set_tooltip_text("Nitro Sense — click to show/hide")
+    icon.set_tooltip_text("NitroTune — click to show/hide")
     icon.set_visible(True)
 
     menu = Gtk.Menu()
@@ -415,7 +415,7 @@ def build_tray(window: "NitroSenseWindow"):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
-    window = NitroSenseWindow()
+    window = NitroTuneWindow()
     window.show_all()
     build_tray(window)
     try:

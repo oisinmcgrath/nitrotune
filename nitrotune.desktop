@@ -16,9 +16,9 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Nitro Sense
+Name=NitroTune
 Comment=Acer Nitro AN515-55 sensor monitor
-Exec=/usr/local/bin/nitro-sense
+Exec=/usr/local/bin/nitrotune
 Icon=cpu
 Categories=System;Monitor;
 StartupNotify=false

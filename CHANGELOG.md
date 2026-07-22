@@ -2,14 +2,16 @@
 
 ## Unreleased — 2026-07-22
 
-Public release prep.
+Public release prep. Project renamed to **NitroTune**; the read-only
+monitor (formerly `nitro-sense`) is now `nitrotune.py`/`nitrotune`,
+since "NitroSense" collides with the Windows app it replaces.
 
 ### Added
 - GPL-2.0-only `LICENSE`, with full copyright/license notice header on
   every source, unit, `.desktop`, and logrotate file.
 - `acer-profile` WMI thermal-profile tooling (`acer-profile.py`,
   `try-predator-v4.sh`, `install-thermal-profile.sh`).
-- `nitro-sense` read-only GTK sensor monitor, merged in as its own
+- `nitrotune` read-only GTK sensor monitor, merged in as its own
   component alongside the fan-control daemon.
 
 ### Removed
@@ -20,7 +22,7 @@ Public release prep.
 - Repo audited for leaked private information (paths, hostnames,
   credentials) — none found beyond the author's name/email in
   copyright headers.
-- Both GUIs (`nitro-sense.py`, `nitro-fan-monitor.py`) confirmed
+- Both GUIs (`nitrotune.py`, `nitro-fan-monitor.py`) confirmed
   display-only — no buttons or interactive controls, read-only sensor
   readout as intended.
 
