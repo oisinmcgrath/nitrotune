@@ -10,13 +10,18 @@ optional GUI that only displays sensors and changes nothing:
 ## Option A — WMI thermal profiles (`acer-profile`)
 
 Uses the kernel's standard `platform_profile` sysfs interface, exposed by
-`acer_wmi` when loaded with `predator_v4=1`. The BIOS manages the fan curve
-internally for whichever profile you select (silent/balanced/performance/turbo).
+`acer_wmi` when loaded with `predator_v4=1`. In principle the BIOS manages
+the fan curve internally for whichever profile you select
+(silent/balanced/performance/turbo) — in practice, on the BIOS version this
+was tested against (V2.06 08/19/2021), only `balanced` actually does
+anything; `silent`/`performance`/`turbo` are accepted by the WMI call and the
+sysfs value changes, but the firmware silently ignores them and the fan
+curve doesn't change. Run `acer-profile status` to check what your BIOS
+actually honours before relying on any profile besides `balanced`.
 
-Simpler and lower-risk, but on some AN515-55 BIOS versions (confirmed on
-V2.06 08/19/2021) most profiles are silently reverted by the firmware — only
-`balanced` reliably sticks. Run `acer-profile status` to check what your BIOS
-actually honours.
+Simpler and lower-risk than Option B, but for most AN515-55 units this means
+it isn't really a 4-profile switcher — it's a way to confirm/force
+`balanced`, and for real fan control you'll want Option B below.
 
 ```bash
 sudo bash try-predator-v4.sh          # confirm the BIOS supports it
