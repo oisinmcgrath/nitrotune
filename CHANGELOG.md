@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased — 2026-07-22
+
+Public release prep.
+
+### Added
+- GPL-2.0-only `LICENSE`, with full copyright/license notice header on
+  every source, unit, `.desktop`, and logrotate file.
+- `acer-profile` WMI thermal-profile tooling (`acer-profile.py`,
+  `try-predator-v4.sh`, `install-thermal-profile.sh`).
+- `nitro-sense` read-only GTK sensor monitor, merged in as its own
+  component alongside the fan-control daemon.
+
+### Removed
+- `CLAUDE-CODE-PROMPT.md` — an internal AI development prompt, not
+  referenced anywhere and not part of the running program.
+
+### Verified
+- Repo audited for leaked private information (paths, hostnames,
+  credentials) — none found beyond the author's name/email in
+  copyright headers.
+- Both GUIs (`nitro-sense.py`, `nitro-fan-monitor.py`) confirmed
+  display-only — no buttons or interactive controls, read-only sensor
+  readout as intended.
+
 ## v2 — 2026-04-07
 
 Smooth, silent fan control. Complete rewrite of the fan logic.
