@@ -4,6 +4,10 @@ Fan/thermal-profile control **and** a read-only sensor monitor for the
 **Acer Nitro AN515-55** on Linux — a native replacement for Windows-only
 NitroSense/DAMX.
 
+<p align="center">
+  <img src="media/logo/nitrotune-icon.png" alt="NitroTune logo" width="160">
+</p>
+
 There are two independent ways to control fans here — pick one — plus an
 optional GUI that only displays sensors and changes nothing:
 
