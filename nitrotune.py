@@ -30,7 +30,11 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib, Gdk
 
+import logging
+import queue
+import re
 import subprocess
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -39,6 +43,15 @@ from typing import Optional
 PLATFORM_PROFILE = Path("/sys/firmware/acpi/platform_profile")
 BAT_DIR          = Path("/sys/class/power_supply/BAT1")
 REFRESH_MS       = 2000
+EC_READER        = Path("/usr/local/libexec/nitrotune-ec-read")
+SUDO             = "/usr/bin/sudo"
+RPM_TIMEOUT_S    = 4.0
+FAN_OUTPUT       = re.compile(
+    rb"CPU_RPM=(0|[1-9][0-9]{0,4})\n"
+    rb"GPU_RPM=(0|[1-9][0-9]{0,4})\n"
+)
+
+LOGGER = logging.getLogger(__name__)
 
 # (kernel sysfs name, short display label)
 PROFILE_LABELS = {
@@ -104,11 +117,35 @@ def gpu_temp_c() -> Optional[float]:
         return None
 
 def fan_rpms() -> tuple[Optional[int], Optional[int]]:
-    """CPU and GPU fan RPM from acer_wmi WMI hwmon (no root needed)."""
-    h = find_hwmon("acer")
-    if not h:
+    """Read CPU and GPU fan RPM using the restricted EC reader."""
+    try:
+        result = subprocess.run(
+            [SUDO, "-n", str(EC_READER)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=RPM_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError):
         return None, None
-    return _read_int(h / "fan1_input"), _read_int(h / "fan2_input")
+
+    if result.returncode != 0:
+        return None, None
+
+    return _parse_fan_output(result.stdout or b"")
+
+def _parse_fan_output(output: bytes) -> tuple[Optional[int], Optional[int]]:
+    match = FAN_OUTPUT.fullmatch(output)
+    if match is None:
+        return None, None
+
+    cpu_rpm, gpu_rpm = (int(value) for value in match.groups())
+    if cpu_rpm > 65535 or gpu_rpm > 65535:
+        return None, None
+
+    return cpu_rpm, gpu_rpm
 
 def ram_usage_gb() -> tuple[float, float]:
     """Returns (used_GiB, total_GiB) from /proc/meminfo."""
@@ -185,6 +222,11 @@ class NitroTuneWindow(Gtk.Window):
         self.set_size_request(380, 260)
         self.set_border_width(0)
         self.connect("delete-event", self._on_delete)
+        self._rpm_results = queue.SimpleQueue()
+        self._rpm_generation = 0
+        self._rpm_read_in_flight = False
+        self._rpm_worker = None
+        self._closing = False
 
         provider = Gtk.CssProvider()
         provider.load_from_data(CSS)
@@ -316,23 +358,99 @@ class NitroTuneWindow(Gtk.Window):
 
     # ── Refresh loop ─────────────────────────────────────────────────────────
 
+    def _start_fan_read(self) -> None:
+        if self._closing or self._rpm_read_in_flight:
+            return
+
+        self._rpm_read_in_flight = True
+        self._rpm_generation += 1
+        generation = self._rpm_generation
+        self._cpu_rpm.set_text("N/A")
+        self._gpu_rpm.set_text("N/A")
+
+        worker = threading.Thread(
+            target=self._fan_read_worker,
+            args=(generation,),
+            daemon=True,
+        )
+        self._rpm_worker = worker
+        try:
+            worker.start()
+        except (RuntimeError, OSError):
+            self._rpm_worker = None
+            self._rpm_read_in_flight = False
+
+    def _fan_read_worker(self, generation: int) -> None:
+        values: tuple[Optional[int], Optional[int]] = (None, None)
+        try:
+            values = fan_rpms()
+        except Exception:
+            LOGGER.exception("Unexpected error while reading fan RPM")
+            values = (None, None)
+        finally:
+            self._rpm_results.put((generation, values))
+            try:
+                GLib.idle_add(self._consume_fan_result, generation)
+            except Exception:
+                LOGGER.exception("Could not schedule fan RPM update")
+
+    def _consume_fan_result(
+        self, expected_generation: Optional[int] = None
+    ) -> bool:
+        try:
+            generation, values = self._rpm_results.get_nowait()
+        except queue.Empty:
+            return False
+
+        if (expected_generation is not None and
+                generation != expected_generation):
+            self._rpm_results.put((generation, values))
+            return False
+
+        if generation != self._rpm_generation:
+            return False
+
+        self._rpm_read_in_flight = False
+        self._rpm_worker = None
+
+        if self._closing:
+            return False
+
+        cpu_rpm, gpu_rpm = values
+        self._cpu_rpm.set_text(
+            f"↻ {cpu_rpm:,} RPM" if cpu_rpm is not None else "N/A"
+        )
+        self._gpu_rpm.set_text(
+            f"↻ {gpu_rpm:,} RPM" if gpu_rpm is not None else "N/A"
+        )
+        return False
+
     def _tick(self) -> bool:
+        was_in_flight = self._rpm_read_in_flight
+        self._consume_fan_result()
+
+        if (self._rpm_read_in_flight and self._rpm_worker is not None and
+                not self._rpm_worker.is_alive()):
+            self._rpm_generation += 1
+            self._rpm_read_in_flight = False
+            self._rpm_worker = None
+            self._cpu_rpm.set_text("N/A")
+            self._gpu_rpm.set_text("N/A")
+
+        if not was_in_flight:
+            self._start_fan_read()
+
         # CPU
         ct = cpu_temp_c()
-        f1, f2 = fan_rpms()
         if ct is not None:
             self._set_temp_bar(self._cpu_bar, ct)
             self._cpu_val.set_text(f"{ct:.0f} °C")
-        if f1 is not None:
-            self._cpu_rpm.set_text(f"↻ {f1:,} RPM")
 
         # GPU
         gt = gpu_temp_c()
         if gt is not None:
             self._set_temp_bar(self._gpu_bar, gt)
             self._gpu_val.set_text(f"{gt:.0f} °C")
-        if f2 is not None:
-            self._gpu_rpm.set_text(f"↻ {f2:,} RPM")
 
         # RAM
         used, total = ram_usage_gb()
@@ -355,7 +473,10 @@ class NitroTuneWindow(Gtk.Window):
         return True  # keep running
 
     def _on_delete(self, *_):
-        GLib.source_remove(self._timer_id)
+        self._closing = True
+        if self._timer_id:
+            GLib.source_remove(self._timer_id)
+            self._timer_id = 0
         return False
 
     def toggle_visibility(self):
